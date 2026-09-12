@@ -235,3 +235,19 @@ Useful means worth retaining, not verified or currently active. Review notes
 record uncertainty, conflicting updates and historical validity. No source
 messages are removed, and annotations do not enable replies or lead sharing.
 Review exports stay under the ignored data/imports folder.
+
+## Demo diagnostics
+
+Runtime logs are JSON lines with UTC timestamp, level, component and event.
+Question events include a process-local anonymous reference, queue time and
+generation time. Failure events identify the phase and error class/HTTP status;
+message content, raw payloads, phone numbers, exception messages and keys are omitted.
+Import events show counts, duplicates and attachment outcomes. No new logging dependency.
+
+GET /health includes uptime, WhatsApp connected state, LLM enabled/configured/active
+flags, model, last LLM request status and duration, and the latest import summary.
+The top-level ok field means the API is alive, not that WhatsApp or OpenAI is ready.
+A null last_request means no LLM request has run since this process started.
+
+Pairing QR images remain in .wa-auth/pairing-qr.png; QR contents are no longer
+printed to logs. Open the image if a pairing_required event appears.

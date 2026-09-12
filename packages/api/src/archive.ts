@@ -1,3 +1,4 @@
+import { log, logRef } from "@ditsebe/whatsapp/logging";
 import { db } from "./db.ts";
 import { privateAlias, redact } from "./privacy.ts";
 import type { CapturedMessage } from "@ditsebe/whatsapp";
@@ -61,6 +62,8 @@ export function createImport(chatId: string, chatName: string, source: string): 
 }
 export function updateImport(id: string, status: string, note: string | null = null) {
   db.query("UPDATE import_runs SET status=?,note=? WHERE id=?").run(status, note, id);
+  const counts = db.query("SELECT received,duplicates FROM import_runs WHERE id=?").get(id) as { received: number; duplicates: number } | null;
+  log(/failed|no_history/.test(status) ? "WARN" : "INFO", "import", "status_changed", { ref: logRef(id), status, count: counts?.received, duplicates: counts?.duplicates });
 }
 export function skipImport(id: string, count = 1) {
   db.query("UPDATE import_runs SET skipped=skipped+? WHERE id=?").run(count, id);
@@ -80,6 +83,7 @@ export function stageMessage(runId: string, msg: CapturedMessage): boolean {
   })();
 }
 export function setAttachment(chatId: string, id: string, status: string, path: string | null = null, text: string | null = null) {
+  if (status !== "pending" && status !== "downloaded") log(/failed|missing|needs_ocr/.test(status) ? "WARN" : "INFO", "import", "attachment_processed", { ref: logRef(chatId + id), status });
   db.query("UPDATE archive_messages SET attachment_status=?,attachment_path=?,extracted_text=? WHERE chat_id=? AND id=?")
     .run(status, path, text, chatId, id);
 }
@@ -89,7 +93,7 @@ export function importReport() {
     FROM import_runs r LEFT JOIN import_items i ON i.run_id=r.id
     LEFT JOIN archive_messages m ON m.chat_id=i.chat_id AND m.id=i.message_id
     GROUP BY r.id ORDER BY r.created_at DESC`).all() as Array<Record<string, any>>;
-  return runs.map(({ chat_id, chat_name, ...run }) => ({ ...run, id: String(run.id),
+  return runs.map(({ chat_id, chat_name, ...run }) => ({ ...run, id: String(run.id), status: String(run.status), messages: Number(run.messages), duplicates: Number(run.duplicates),
     chat: privateAlias(chat_id, "Group"), name: redact(chat_name),
     note: run.note ? redact(run.note) : null,
     attachments: db.query(`SELECT m.attachment_status AS status,COUNT(*) AS count

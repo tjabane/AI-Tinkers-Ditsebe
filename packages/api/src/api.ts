@@ -1,3 +1,4 @@
+import { log, errorFields } from "@ditsebe/whatsapp/logging";
 import { importReport, archiveMessages } from "./archive.ts";
 import { publicMessage, redact, privateAlias } from "./privacy.ts";
 import { config } from "./config.ts";
@@ -11,6 +12,7 @@ function json(data: unknown, status = 200): Response {
 }
 
 export type SendMessageOptions = {
+  health?: () => { llm: { enabled: boolean; configured: boolean; active: boolean; model: string; last_request: { status: string; at: string; duration_ms?: number } | null } };
   continueImport?: (id: string) => Promise<unknown>;
   beginImport?: (groupName: string) => Promise<unknown>;
   targetChatId?: string;
@@ -20,6 +22,7 @@ export type SendMessageOptions = {
 
 /** Captured-message reads and an optional outbound group-message handler. */
 export function startApi(outbound?: SendMessageOptions) {
+  const started = Date.now();
   const server = Bun.serve({
     port: config.apiPort,
     hostname: "127.0.0.1",
@@ -63,7 +66,7 @@ export function startApi(outbound?: SendMessageOptions) {
         }
         try { return json(await outbound.send(body.text, quotedMessageId), 201); }
         catch (err) {
-          console.error("WhatsApp send failed:", err);
+          log("ERROR", "api", "send_failed", errorFields(err));
           return json({ error: "Sending failed; delivery may be uncertain. Check the group before retrying." }, 502);
         }
       }
@@ -80,7 +83,12 @@ export function startApi(outbound?: SendMessageOptions) {
         return json(archiveMessages(url.searchParams.get("runId") ?? "", 100, offset, disposition));
       }
       if (url.pathname === "/health") {
-        return json({ ok: true, ...stats() });
+        const latest = importReport()[0];
+        return json({ ok: true, ...stats(), uptime_seconds: Math.floor((Date.now() - started) / 1000),
+          whatsapp: { connected: outbound?.isConnected() ?? false },
+          llm: outbound?.health?.().llm ?? { enabled: false, configured: false, active: false, model: null, last_request: null },
+          latest_import: latest ? { status: latest.status, messages: latest.messages, duplicates: latest.duplicates, attachments: latest.attachments } : null,
+        });
       }
 
       if (url.pathname === "/chats") {
@@ -101,6 +109,6 @@ export function startApi(outbound?: SendMessageOptions) {
     },
   });
 
-  console.log(`REST API on http://localhost:${server.port} (/health, /chats, /messages)`);
+  log("INFO", "api", "listening", { port: server.port });
   return server;
 }

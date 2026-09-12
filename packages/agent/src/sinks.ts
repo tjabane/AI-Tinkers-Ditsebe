@@ -1,3 +1,4 @@
+import { log, logRef, errorFields } from "@ditsebe/whatsapp/logging";
 import { config } from "./config.ts";
 import { saveMessage, redact, privateAlias } from "@ditsebe/api";
 import type { CapturedMessage } from "@ditsebe/whatsapp";
@@ -34,10 +35,7 @@ const webhookSink: Sink = {
 const consoleSink: Sink = {
   name: "console",
   handle: (msg) => {
-    const who = privateAlias(msg.chatId + ":" + (msg.senderId ?? msg.senderName ?? "unknown"));
-    const where = redact(msg.chatName ?? "Group");
-    const body = redact(msg.text ?? `<${msg.type}>`);
-    console.log(`[${where}] ${who}: ${body}`);
+    log("INFO", "agent", "message_captured", { ref: logRef(msg.chatId + ":" + msg.id) });
   },
 };
 
@@ -53,7 +51,7 @@ export async function fanOut(msg: CapturedMessage): Promise<void> {
       try {
         await sink.handle(msg);
       } catch (err) {
-        console.error(`sink "${sink.name}" failed for message ${msg.id}:`, err);
+        log("ERROR", "agent", "sink_failed", { ref: logRef(msg.chatId + ":" + msg.id), sink: sink.name, ...errorFields(err) });
       }
     }),
   );

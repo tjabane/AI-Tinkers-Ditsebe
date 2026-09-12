@@ -8,7 +8,7 @@ import makeWASocket, {
   type WASocket,
   type WAMessage,
 } from "@whiskeysockets/baileys";
-import qrcode from "qrcode-terminal";
+import { log, logRef, errorFields } from "./logging.ts";
 import { toFile } from "qrcode";
 import { resolve } from "node:path";
 import { config } from "./config.ts";
@@ -23,8 +23,8 @@ const logger = {
   debug: () => {},
   info: () => {},
   warn: () => {},
-  error: (...args: unknown[]) => console.error(...args),
-  fatal: (...args: unknown[]) => console.error(...args),
+  error: () => log("ERROR", "whatsapp", "protocol_error"),
+  fatal: () => log("ERROR", "whatsapp", "protocol_fatal"),
 } as never;
 
 /** Group subjects, so stored messages carry the group's name and not just its jid. */
@@ -42,6 +42,7 @@ export async function sendTextMessage(chatId: string, text: string, quoted?: WAM
   if (!text.trim()) throw new Error("Message text must not be empty");
   const sent = await socket.sendMessage(chatId, { text }, quoted ? { quoted } : undefined);
   if (!sent?.key.id) throw new Error("WhatsApp did not return a message ID");
+  log("INFO", "whatsapp", "message_sent", { ref: logRef(chatId + ":" + sent.key.id) });
   return { id: sent.key.id, chatId };
 }
 
@@ -84,28 +85,27 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log("\nScan this QR with the WhatsApp account the agent should use:\n");
-      qrcode.generate(qr, { small: true });
+      log("INFO", "whatsapp", "pairing_required");
       const qrPath = resolve(config.authDir, "pairing-qr.png");
       try {
         await toFile(qrPath, qr, { width: 600, margin: 4 });
-        console.log(`Pairing QR saved to ${qrPath} (refresh the image when the code changes)`);
+        log("INFO", "whatsapp", "pairing_qr_saved");
       } catch (err) {
-        console.error("Could not save pairing QR:", err);
+        log("ERROR", "whatsapp", "pairing_qr_failed", errorFields(err));
       }
     }
 
     if (connection === "open") {
       activeSocket = sock;
-      console.log(`\n✅ connected as ${sock.user?.name ?? sock.user?.id}`);
+      log("INFO", "whatsapp", "connected");
       try {
         const groups = await sock.groupFetchAllParticipating();
         for (const [jid, meta] of Object.entries(groups)) {
           if (meta.subject) groupNames.set(jid, meta.subject);
         }
-        console.log(`   listening in ${Object.keys(groups).length} group(s)`);
+        log("INFO", "whatsapp", "groups_loaded", { count: Object.keys(groups).length });
       } catch (err) {
-        console.error("could not prefetch group list:", err);
+        log("ERROR", "whatsapp", "group_load_failed", errorFields(err));
       }
     }
 
@@ -114,14 +114,12 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
       const statusCode = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output
         ?.statusCode;
       if (statusCode === DisconnectReason.loggedOut) {
-        console.error(
-          `\n❌ logged out. Delete ${config.authDir} and restart to pair again.`,
-        );
+        log("WARN", "whatsapp", "logged_out");
         return;
       }
-      console.warn(`connection closed (${statusCode ?? "unknown"}) — reconnecting in 3s`);
+      log("WARN", "whatsapp", "disconnected", { status: statusCode });
       setTimeout(() => {
-        startWhatsApp(onMessage, onHistory).catch((err) => console.error("reconnect failed:", err));
+        startWhatsApp(onMessage, onHistory).catch((err) => log("ERROR", "whatsapp", "reconnect_failed", errorFields(err)));
       }, 3000);
     }
   });
