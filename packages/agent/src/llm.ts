@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { redact, privateAlias } from "@ditsebe/api";
 import type { MessageRow } from "@ditsebe/api";
 
 export type ReplyInput = { question: string; history: MessageRow[] };
@@ -19,18 +20,18 @@ register providers or take other actions. Those capabilities are not implemented
 For current facts not established by the history, acknowledge uncertainty. Use plain WhatsApp text.`,
       input: JSON.stringify({
         history: history.map(row => ({
-          sender: row.from_me ? "Linked account" : row.sender_name ?? "Unknown",
-          text: row.text?.slice(0, 2000) ?? "[non-text message]",
+          sender: row.from_me ? "Linked account" : privateAlias(row.chat_id + ":" + (row.sender_id ?? row.sender_name ?? "unknown")),
+          text: redact(row.text?.slice(0, 2000) ?? "[non-text message]"),
           timestamp: row.timestamp,
           id: row.id,
           quotedMessageId: row.quoted_message_id,
         })),
-        question: question.slice(0, 6000),
+        question: redact(question.slice(0, 6000)),
       }),
       max_output_tokens: 2000,
     });
     const text = response.output_text.trim();
     if (response.status !== "completed" || !text) throw new Error("LLM returned no complete answer");
-    return text.slice(0, 10000);
+    return redact(text.slice(0, 10000));
   };
 }

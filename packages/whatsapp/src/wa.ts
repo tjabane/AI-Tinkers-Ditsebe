@@ -1,5 +1,7 @@
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
+  normalizeMessageContent,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
@@ -58,7 +60,7 @@ async function groupName(sock: WASocket, jid: string): Promise<string | null> {
   return null;
 }
 
-export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | Promise<void>): Promise<WASocket> {
+export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | Promise<void>, onHistory?: (messages: WAMessage[]) => void): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
   const { version } = await fetchLatestBaileysVersion();
 
@@ -76,6 +78,7 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
   });
 
   sock.ev.on("creds.update", saveCreds);
+  if (onHistory) sock.ev.on("messaging-history.set", ({ messages }) => onHistory(messages));
 
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -118,7 +121,7 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
       }
       console.warn(`connection closed (${statusCode ?? "unknown"}) — reconnecting in 3s`);
       setTimeout(() => {
-        startWhatsApp(onMessage).catch((err) => console.error("reconnect failed:", err));
+        startWhatsApp(onMessage, onHistory).catch((err) => console.error("reconnect failed:", err));
       }, 3000);
     }
   });
@@ -131,7 +134,7 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     // "notify" is live traffic; "append" is history backfill we do not want here.
-    if (type !== "notify") return;
+    if (type !== "notify") { onHistory?.(messages); return; }
 
     for (const raw of messages) {
       const chatId = raw.key.remoteJid;
@@ -148,4 +151,30 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
   });
 
   return sock;
+}
+
+export async function findGroup(name: string) {
+  if (!activeSocket) throw new Error("WhatsApp is not connected");
+  const groups = Object.values(await activeSocket.groupFetchAllParticipating());
+  const matches = groups.filter(group => group.subject.trim().toLowerCase() === name.trim().toLowerCase());
+  if (matches.length !== 1) throw new Error(matches.length ? "More than one group has that name" : "Group not found on the linked account");
+  return matches[0]!;
+}
+export async function requestHistory(raw: unknown, timestampMs: number) {
+  if (!activeSocket) throw new Error("WhatsApp is not connected");
+  const message = raw as WAMessage;
+  return activeSocket.fetchMessageHistory(100, message.key, timestampMs);
+}
+export async function downloadAttachment(raw: unknown) {
+  if (!activeSocket) throw new Error("WhatsApp is not connected");
+  const message = raw as WAMessage;
+  const content = normalizeMessageContent(message.message);
+  const image = content?.imageMessage;
+  const document = content?.documentMessage ?? content?.documentWithCaptionMessage?.message?.documentMessage;
+  const kind = image ? "image" as const : document?.mimetype === "application/pdf" ? "pdf" as const : undefined;
+  if (!kind) return null;
+  if (Number((image ?? document)?.fileLength ?? 0) > 25 * 1024 * 1024) throw new Error("Attachment exceeds 25 MB");
+  const bytes = await downloadMediaMessage(message, "buffer", {}, { logger, reuploadRequest: activeSocket.updateMediaMessage });
+  if (bytes.length > 25 * 1024 * 1024) throw new Error("Attachment exceeds 25 MB");
+  return { bytes, kind, extension: kind === "pdf" ? ".pdf" : ".jpg" };
 }

@@ -12,6 +12,9 @@
   "dependencies": {
     "@ditsebe/api": "workspace:*",
     "@ditsebe/whatsapp": "workspace:*",
-    "openai": "^7.15.0"
+    "@napi-rs/canvas": "^1.0.9",
+    "openai": "^7.15.0",
+    "pdfjs-dist": "^6.3.289",
+    "tesseract.js": "^7.0.0"
   }
 }

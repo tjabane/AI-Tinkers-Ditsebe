@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "echo": "bun run packages/agent/scripts/webhook-echo.ts",
     "test": "bun test packages/agent/tests packages/api/tests",
-    "test:llm": "bun run packages/agent/scripts/llm-smoke.ts"
+    "test:llm": "bun run packages/agent/scripts/llm-smoke.ts",
+    "import:export": "bun run packages/agent/scripts/import-export.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -1,5 +1,5 @@
 import { config } from "./config.ts";
-import { saveMessage } from "@ditsebe/api";
+import { saveMessage, redact, privateAlias } from "@ditsebe/api";
 import type { CapturedMessage } from "@ditsebe/whatsapp";
 
 /** Anything that wants a copy of every captured message. */
@@ -25,7 +25,7 @@ const webhookSink: Sink = {
         ...(config.webhookToken ? { authorization: `Bearer ${config.webhookToken}` } : {}),
       },
       // The raw payload is big and noisy; the webhook gets the flat record.
-      body: JSON.stringify({ ...msg, raw: undefined }),
+      body: JSON.stringify({ id: msg.id, chat: privateAlias(msg.chatId, "Group"), sender: privateAlias(msg.chatId + ":" + (msg.senderId ?? msg.senderName ?? "unknown")), text: msg.text ? redact(msg.text) : null, timestamp: msg.timestamp, type: msg.type }),
     });
     if (!res.ok) throw new Error(`webhook responded ${res.status}`);
   },
@@ -34,9 +34,9 @@ const webhookSink: Sink = {
 const consoleSink: Sink = {
   name: "console",
   handle: (msg) => {
-    const who = msg.senderName ?? msg.senderId ?? "unknown";
-    const where = msg.chatName ?? msg.chatId;
-    const body = msg.text ?? `<${msg.type}>`;
+    const who = privateAlias(msg.chatId + ":" + (msg.senderId ?? msg.senderName ?? "unknown"));
+    const where = redact(msg.chatName ?? "Group");
+    const body = redact(msg.text ?? `<${msg.type}>`);
     console.log(`[${where}] ${who}: ${body}`);
   },
 };

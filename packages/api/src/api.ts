@@ -1,3 +1,5 @@
+import { importReport, archiveMessages } from "./archive.ts";
+import { publicMessage, redact, privateAlias } from "./privacy.ts";
 import { config } from "./config.ts";
 import { getRawMessage, listChats, listMessages, stats } from "./db.ts";
 
@@ -9,6 +11,8 @@ function json(data: unknown, status = 200): Response {
 }
 
 export type SendMessageOptions = {
+  continueImport?: (id: string) => Promise<unknown>;
+  beginImport?: (groupName: string) => Promise<unknown>;
   targetChatId?: string;
   isConnected: () => boolean;
   send: (text: string, quotedMessageId?: string) => Promise<{ id: string; chatId: string }>;
@@ -18,9 +22,26 @@ export type SendMessageOptions = {
 export function startApi(outbound?: SendMessageOptions) {
   const server = Bun.serve({
     port: config.apiPort,
+    hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
+      if (url.pathname === "/imports/continue" && req.method === "POST") {
+        if (!outbound?.continueImport) return json({ error: "History import unavailable" }, 503);
+        try {
+          const body = await req.json();
+          if (!body || typeof body !== "object" || !("id" in body) || typeof body.id !== "string") return json({ error: "id is required" }, 400);
+          return json(await outbound.continueImport(body.id), 202);
+        } catch { return json({ error: "Unable to continue import" }, 409); }
+      }
 
+      if (url.pathname === "/imports" && req.method === "POST") {
+        if (!outbound?.beginImport) return json({ error: "History import unavailable" }, 503);
+        let body;
+        try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+        if (!body || typeof body !== "object" || !("groupName" in body) || typeof body.groupName !== "string" || !body.groupName.trim()) return json({ error: "groupName is required" }, 400);
+        try { return json(await outbound.beginImport(body.groupName), 202); }
+        catch (err) { return json({ error: redact(err instanceof Error ? err.message : "Import failed") }, 409); }
+      }
       if (url.pathname === "/messages/send") {
         if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
         let body: unknown;
@@ -49,20 +70,31 @@ export function startApi(outbound?: SendMessageOptions) {
 
       if (req.method !== "GET") return json({ error: "method not allowed" }, 405);
 
+      if (url.pathname === "/archive") return new Response(Bun.file(new URL("./archive.html", import.meta.url)), { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (url.pathname === "/imports") return json(importReport());
+      if (url.pathname === "/archive/messages") {
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        if (!Number.isSafeInteger(offset) || offset < 0) return json({ error: "Invalid offset" }, 400);
+        const disposition = url.searchParams.get("disposition") ?? undefined;
+        if (disposition && !["useful", "context", "needs_review", "low_value", "unreviewed"].includes(disposition)) return json({ error: "Invalid review filter" }, 400);
+        return json(archiveMessages(url.searchParams.get("runId") ?? "", 100, offset, disposition));
+      }
       if (url.pathname === "/health") {
         return json({ ok: true, ...stats() });
       }
 
       if (url.pathname === "/chats") {
-        return json(listChats());
+        return json(listChats().map(chat => ({ ...chat, chat_id: privateAlias(chat.chat_id, "Group"), chat_name: chat.chat_name ? redact(chat.chat_name) : null })));
       }
 
       if (url.pathname === "/messages") {
         const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 500);
-        const chatId = url.searchParams.get("chatId") ?? undefined;
+        const requestedChat = url.searchParams.get("chatId") ?? undefined;
+        const chatId = listChats().find(chat => privateAlias(chat.chat_id, "Group") === requestedChat)?.chat_id ?? requestedChat;
         const sinceParam = url.searchParams.get("since");
         const since = sinceParam ? Number(sinceParam) : undefined;
-        return json(listMessages({ chatId, limit, since }));
+        if (!Number.isSafeInteger(limit) || limit < 1 || (since !== undefined && !Number.isFinite(since))) return json({ error: "Invalid query" }, 400);
+        return json(listMessages({ chatId, limit, since }).map(row => publicMessage(row)));
       }
 
       return json({ error: "not found" }, 404);

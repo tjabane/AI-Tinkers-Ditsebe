@@ -13,8 +13,8 @@ const reply = await generate({
     quoted_message_id: null, timestamp: Date.now(),
   }],
 });
-if (!/Sam/i.test(reply) || !/Alex/i.test(reply)) {
-  throw new Error("The live response did not identify Sam and Alex: " + reply);
+if (!/Resident-/i.test(reply) || !/Alex/i.test(reply)) {
+  throw new Error("The live response did not identify the anonymous recommender and Alex: " + reply);
 }
 console.log("PASS: live LLM used supplied conversation history. No WhatsApp message was sent.");
 console.log(reply);

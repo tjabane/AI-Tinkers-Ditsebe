@@ -192,3 +192,46 @@ send a new question to retry. Replies are serialized and replayed message IDs ar
 skipped. A crash between sending and saving can still cause a duplicate on replay.
 Private follow-ups, provider registration, live web search and service workflows are
 not implemented yet. Run `bun test packages/agent/tests packages/api/tests` for offline checks.
+
+## Private community archive
+
+Open http://localhost:3000/archive to review staged imports and their reports.
+The API binds to 127.0.0.1. It has no remote authentication and should remain local.
+Original messages, identifiers, redaction salt and attachments remain in the local
+data/ store (ignored by Git); the database is not encrypted. Raw attachments are
+not served over HTTP. Archive reads use anonymous resident labels and redact
+phone-like strings. Live message reads, webhooks and LLM text are filtered too.
+This is best-effort redaction, not certified anonymisation: OCR errors, spelled-out
+numbers and unusual formatting can evade it. Review before sharing.
+
+Start a history import with POST /imports and JSON {"groupName":"Manhattan Heights"}.
+GET /imports reports actual coverage. POST /imports/continue with JSON {"id":"RUN_ID"}
+requests another page from the oldest staged message. WhatsApp may return fewer
+messages than requested or none. If no stored anchor exists, leave the app running
+until a message arrives in that group. Importing does not invoke the LLM, agent
+replies, webhooks or lead creation; the archive is separate from live history.
+
+Fallback: export the group chat with media from WhatsApp and extract it locally.
+Run: bun run import:export "path/to/_chat.txt" "Manhattan Heights" DMY
+Use MDY for month-first exports. English Android/iOS text formats are supported;
+timestamps are interpreted as South Africa UTC+02:00. Unrecognised lines are
+reported; text exports do not preserve reliable reply IDs or own-message identity.
+Reimporting the same source is deduplicated. Export and Baileys IDs differ, so
+cross-source duplicates require review. Attachment paths must stay in the export folder.
+
+Images use local English OCR (the language model may download on first use).
+PDFs use local text extraction, up to 100 pages, with local OCR for scanned pages.
+Empty results and partial extraction are flagged for review.
+Files over 25 MB and unsupported formats are flagged. Expired WhatsApp attachments
+can fail to download; include media in the export fallback when possible.
+Check counts, date coverage, types, duplicates and extraction statuses in the report.
+No automatic classification or publication is enabled for imported data.
+
+### Archive review marks
+
+Archive records can carry source-linked review annotations: useful, context,
+needs_review and low_value. The archive page has a filter for these marks.
+Useful means worth retaining, not verified or currently active. Review notes
+record uncertainty, conflicting updates and historical validity. No source
+messages are removed, and annotations do not enable replies or lead sharing.
+Review exports stay under the ignored data/imports folder.
