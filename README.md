@@ -1,253 +1,64 @@
-# hack.ditsebe — WhatsApp group agent
+﻿# Ditsebe - WhatsApp community assistant
 
-A WhatsApp agent that joins residential group chats — estate, complex and
-neighbourhood groups — and turns them into structured, queryable data, so that
-software can eventually take part in the conversation.
+Ditsebe captures residential WhatsApp conversations into SQLite, answers explicit questions using recent group context, and imports older conversations into a separate archive for review.
 
-## The problem
+## Documentation
 
-A neighbourhood WhatsApp group is where a community actually coordinates: a burst
-water pipe, a suspicious car on the corner, load-shedding times, a levy dispute, a
-plumber somebody can vouch for. All of it is real, useful, local knowledge — and all
-of it is trapped in an unsearchable scroll of messages on individual phones. Nobody
-can query it, nothing is tracked to resolution, and the same three questions get
-asked every week.
+- [Solution and architecture](docs/solution.md): problem, capabilities, components, storage, and limitations.
+- [Data flow](docs/data-flow.md): diagrams for capture, LLM replies, manual sends, imports, and privacy boundaries.
+- [Operations and API reference](docs/operations.md): setup, configuration, commands, routes, and troubleshooting.
 
-## The approach
+## Quick start
 
-The agent is a WhatsApp account like any other. You add it to a group and, from that
-moment, it sees everything the group sees. It connects through
-[Baileys](https://github.com/WhiskeySockets/Baileys), which speaks the WhatsApp Web
-protocol directly — no Business API, no per-message fees, no approved template
-messages, and it works with ordinary community groups rather than only with numbers
-that have messaged a business first.
+Requires Bun. Run from the repository root:
 
-That choice is what makes the project possible in a hackathon, and it is also the main
-caveat: this is an unofficial client, so it belongs on a spare number, not a personal
-or business-critical one.
-
-## Phases
-
-### Phase 1 — capture *(built)*
-
-Get every group message out of WhatsApp and into somewhere queryable. This is the
-foundation: an LLM can only be useful about a group it has read.
-
-- Pairs to a WhatsApp account by QR and keeps the session across restarts
-- Listens to every message in every group the account belongs to
-- Flattens each one — group, sender, text, media type, reply-to, timestamp — into a
-  single record, keeping the raw payload alongside it
-- Writes to SQLite and, optionally, POSTs to any REST endpoint
-- Serves a read-only API over the store
-
-Deliberately not in scope: downloading media binaries, and backfilling months of
-history on connect. Capture starts when the agent joins the group.
-
-### Phase 2 — respond *(next)*
-
-An LLM reads the captured conversation and takes part in it:
-
-- **In the group** — answers questions the group has already answered before, surfaces
-  the relevant earlier thread, summarises what was decided
-- **Individually** — messages a specific resident directly, for anything that should
-  not be said in front of forty neighbours
-
-The seam is already in place. `fanOut()` in `packages/agent/src/sinks.ts` hands every captured message
-to a list of sinks; a reply handler is just another sink, with `sock.sendMessage()` for
-the outbound half. What phase 2 adds on top is the judgement: deciding when the agent
-should speak at all, and pulling the right slice of history into the prompt.
-
-## Run it
-
-```sh
+```powershell
 bun install
-bun run dev
+Copy-Item .env.example .env
+bun run start
 ```
 
-Scan the QR with the WhatsApp account the agent should use (a spare number, not your
-personal one — this is a full WhatsApp Web session). Pairing is saved to `.wa-auth/`,
-so restarts do not ask again. Then add that account to a group and talk in it: every
-message is printed, stored and pushed.
+Copy the environment file only if creating a new configuration. When `pairing_required` appears, open `.wa-auth/pairing-qr.png` and scan it using WhatsApp's linked-device flow. Credentials persist across restarts. The Baileys integration is an unofficial WhatsApp Web client; use a spare account for the demo.
 
-## Configuration
+Open http://localhost:3000/health for status and http://localhost:3000/archive for imported history. The API binds to localhost and has no authentication.
 
-Copy `.env.example` to `.env`. Everything has a working default; the only one you are
-likely to set is `WEBHOOK_URL`.
+For generated replies, set `OPENAI_API_KEY` and `AGENT_GROUP_ID` in `.env`, restart, and send from another account in that group:
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `WEBHOOK_URL` | _(none)_ | POST every message here as JSON. Blank = SQLite only. |
-| `WEBHOOK_TOKEN` | _(none)_ | Sent as `Authorization: Bearer …`. |
-| `DB_PATH` | `./data/messages.db` | SQLite file. |
-| `WA_AUTH_DIR` | `./.wa-auth` | Pairing credentials. Delete to re-pair. |
-| `PORT` | `3000` | Local read API. |
-| `GROUPS_ONLY` | `true` | Ignore direct messages. |
-| `CAPTURE_OWN` | `false` | Also capture the agent's own outgoing messages. |
-
-## Read API
-
-| Route | Description |
-| --- | --- |
-| `GET /health` | Liveness plus message/chat/sender counts. |
-| `GET /chats` | Every group seen, with message counts and last activity. |
-| `GET /messages?chatId=&limit=&since=` | Captured messages, newest first. |
-
-`since` is epoch milliseconds, `limit` caps at 500.
-
-## Webhook payload
-
-```json
-{
-  "id": "3EB0…",
-  "chatId": "27831234567-1600000000@g.us",
-  "chatName": "Ditsebe Estate",
-  "isGroup": true,
-  "senderId": "27831234567@s.whatsapp.net",
-  "senderName": "Thabo",
-  "fromMe": false,
-  "type": "conversation",
-  "text": "Anyone else's water off?",
-  "quotedMessageId": null,
-  "timestamp": 1757664000000
-}
+```text
+!ditsebe What has the group discussed?
 ```
 
-To see this without a backend, run the echo receiver in a second terminal:
+Capture and manual sends work without an API key. Imported archives are separate from the assistant's recent live-message context.
 
-```sh
-bun run echo
-# then, in the first terminal:
-WEBHOOK_URL=http://localhost:4000/hook bun run dev
-```
+## Current features
 
-## Layout
+- Live normalization, SQLite persistence, reconnect handling, and optional redacted webhooks.
+- Explicit group questions with serialized LLM replies and replay suppression.
+- Local API for reads, group sends, quoted replies, and manual private follow-ups.
+- History/export archive imports, local image OCR, PDF extraction, coverage reports, and source-linked review annotations.
+- Best-effort redaction and structured runtime diagnostics.
 
-This Bun monorepo contains three workspaces:
+Provider registration, bookings, live web search, automatic lead creation, and autonomous private follow-ups are not implemented.
+
+## Workspaces and checks
 
 | Workspace | Responsibility |
 | --- | --- |
-| `packages/whatsapp` | Pairing, reconnect, normalization and captured-message types. Delivers messages through an injected callback. |
-| `packages/api` | SQLite storage, queries and the read-only HTTP API. |
-| `packages/agent` | Coordinates WhatsApp, API, storage, console and webhook sinks. Future response logic belongs here. |
-
-The agent imports `@ditsebe/api` and `@ditsebe/whatsapp` using workspace dependencies.
-The API imports only the captured-message type from WhatsApp. WhatsApp does not depend on the API or agent.
-
-Run from the repository root so the root `.env`, `data/` and `.wa-auth/` continue to work:
-
-```sh
-bun run dev          # full app, watch mode
-bun run start        # full app
-bun run start:api    # API only, without WhatsApp pairing
-bun run dev:api      # API only, watch mode
-bun run typecheck    # all workspaces
-bun run echo         # development webhook receiver
-```
-
-Workspace start/dev scripts also launch from the repository root. Run the standalone
-API and full app separately, since both use the same port. LLM responses remain future work.
-
-## Notes
-
-- The full Baileys payload is kept in the `raw` column, so fields not parsed yet can be
-  backfilled without recapturing.
-- Messages are keyed on `(chat_id, id)`, so replays and reconnects do not duplicate rows.
-- Webhook failures are logged but never block capture.
-- Media is recorded by type and caption; the binaries are not downloaded.
-- People in these groups have not consented to a bot logging them — for anything beyond
-  the demo, tell the group the agent is there and what it keeps.
-
-## Send to Hackathon dev test
-
-With the full app running and WhatsApp connected, post text to the local API.
-The destination is fixed to Hackathon dev test (`120363431475712196@g.us`).
+| `packages/whatsapp` | Connection, normalization, history requests, media download, sending. |
+| `packages/api` | SQLite, redaction, HTTP API, archive reports/viewer. |
+| `packages/agent` | Application wiring, sinks, LLM orchestration, imports. |
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:3000/messages/send -ContentType 'application/json' -Body '{"text":"Hello from Ditsebe"}'
+bun run dev
+bun run start:api
+bun run typecheck
+bun test packages/agent/tests packages/api/tests
 ```
 
-A successful response is HTTP 201 with the WhatsApp message ID and chat ID; it
-is not a recipient delivery receipt. Invalid input returns 400, disconnected or
-API-only mode returns 503, and send failures return 502. Check the group before
-retrying a failed request to avoid duplicate messages. Outgoing capture still
-depends on CAPTURE_OWN.
+Run full app and API-only mode separately because they share a port. Original messages, imported files, and credentials remain sensitive local data. SQLite is not encrypted and redaction is best effort; tell participants what the application captures before community use.
 
-To reply to a captured message, include `quotedMessageId` alongside `text` in the
-POST body. The message must exist in the target group; otherwise the API returns 404.
-
-## LLM group assistant
-
-Set OPENAI_API_KEY in the root .env and restart with bun run start.
-OPENAI_MODEL defaults to gpt-5.5 and can be changed. LLM_ENABLED=false disables replies.
-AGENT_GROUP_ID defaults to Hackathon dev test and also sets the manual send destination.
-
-From another WhatsApp account, send: `!ditsebe What has the group discussed?`
-The agent uses up to 40 recent messages from that group and sends a quoted reply.
-Replies are saved even when CAPTURE_OWN=false, so follow-up questions have context.
-Ordinary messages and messages from the linked account do not trigger the LLM.
-The API key is required only for LLM replies; capture and manual sends work without it.
-
-Requests have a 45-second timeout. Failures are logged and not automatically resent;
-send a new question to retry. Replies are serialized and replayed message IDs are
-skipped. A crash between sending and saving can still cause a duplicate on replay.
-Private follow-ups, provider registration, live web search and service workflows are
-not implemented yet. Run `bun test packages/agent/tests packages/api/tests` for offline checks.
-
-## Private community archive
-
-Open http://localhost:3000/archive to review staged imports and their reports.
-The API binds to 127.0.0.1. It has no remote authentication and should remain local.
-Original messages, identifiers, redaction salt and attachments remain in the local
-data/ store (ignored by Git); the database is not encrypted. Raw attachments are
-not served over HTTP. Archive reads use anonymous resident labels and redact
-phone-like strings. Live message reads, webhooks and LLM text are filtered too.
-This is best-effort redaction, not certified anonymisation: OCR errors, spelled-out
-numbers and unusual formatting can evade it. Review before sharing.
-
-Start a history import with POST /imports and JSON {"groupName":"Manhattan Heights"}.
-GET /imports reports actual coverage. POST /imports/continue with JSON {"id":"RUN_ID"}
-requests another page from the oldest staged message. WhatsApp may return fewer
-messages than requested or none. If no stored anchor exists, leave the app running
-until a message arrives in that group. Importing does not invoke the LLM, agent
-replies, webhooks or lead creation; the archive is separate from live history.
-
-Fallback: export the group chat with media from WhatsApp and extract it locally.
-Run: bun run import:export "path/to/_chat.txt" "Manhattan Heights" DMY
-Use MDY for month-first exports. English Android/iOS text formats are supported;
-timestamps are interpreted as South Africa UTC+02:00. Unrecognised lines are
-reported; text exports do not preserve reliable reply IDs or own-message identity.
-Reimporting the same source is deduplicated. Export and Baileys IDs differ, so
-cross-source duplicates require review. Attachment paths must stay in the export folder.
-
-Images use local English OCR (the language model may download on first use).
-PDFs use local text extraction, up to 100 pages, with local OCR for scanned pages.
-Empty results and partial extraction are flagged for review.
-Files over 25 MB and unsupported formats are flagged. Expired WhatsApp attachments
-can fail to download; include media in the export fallback when possible.
-Check counts, date coverage, types, duplicates and extraction statuses in the report.
-No automatic classification or publication is enabled for imported data.
-
-### Archive review marks
-
-Archive records can carry source-linked review annotations: useful, context,
-needs_review and low_value. The archive page has a filter for these marks.
-Useful means worth retaining, not verified or currently active. Review notes
-record uncertainty, conflicting updates and historical validity. No source
-messages are removed, and annotations do not enable replies or lead sharing.
-Review exports stay under the ignored data/imports folder.
-
-## Demo diagnostics
-
-Runtime logs are JSON lines with UTC timestamp, level, component and event.
-Question events include a process-local anonymous reference, queue time and
-generation time. Failure events identify the phase and error class/HTTP status;
-message content, raw payloads, phone numbers, exception messages and keys are omitted.
-Import events show counts, duplicates and attachment outcomes. No new logging dependency.
-
-GET /health includes uptime, WhatsApp connected state, LLM enabled/configured/active
-flags, model, last LLM request status and duration, and the latest import summary.
-The top-level ok field means the API is alive, not that WhatsApp or OpenAI is ready.
-A null last_request means no LLM request has run since this process started.
-
-Pairing QR images remain in .wa-auth/pairing-qr.png; QR contents are no longer
-printed to logs. Open the image if a pairing_required event appears.
+Later service requests in the demo group now receive a quoted recommendation
+from stored cases in that same group. Private feedback is included only after
+the author replies YES to a separate permission question. NO keeps it private.
+Permission questions and recommendation sends have persistent duplicate guards.
+Prior group recommendations may still be shared without private feedback.
