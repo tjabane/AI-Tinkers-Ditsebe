@@ -174,3 +174,21 @@ depends on CAPTURE_OWN.
 
 To reply to a captured message, include `quotedMessageId` alongside `text` in the
 POST body. The message must exist in the target group; otherwise the API returns 404.
+
+## LLM group assistant
+
+Set OPENAI_API_KEY in the root .env and restart with bun run start.
+OPENAI_MODEL defaults to gpt-5.5 and can be changed. LLM_ENABLED=false disables replies.
+AGENT_GROUP_ID defaults to Hackathon dev test and also sets the manual send destination.
+
+From another WhatsApp account, send: `!ditsebe What has the group discussed?`
+The agent uses up to 40 recent messages from that group and sends a quoted reply.
+Replies are saved even when CAPTURE_OWN=false, so follow-up questions have context.
+Ordinary messages and messages from the linked account do not trigger the LLM.
+The API key is required only for LLM replies; capture and manual sends work without it.
+
+Requests have a 45-second timeout. Failures are logged and not automatically resent;
+send a new question to retry. Replies are serialized and replayed message IDs are
+skipped. A crash between sending and saving can still cause a duplicate on replay.
+Private follow-ups, provider registration, live web search and service workflows are
+not implemented yet. Run `bun test packages/agent/tests packages/api/tests` for offline checks.

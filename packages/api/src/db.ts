@@ -131,3 +131,7 @@ export function getRawMessage(chatId: string, id: string) {
   const row = db.query("SELECT raw FROM messages WHERE chat_id = ? AND id = ?").get(chatId, id) as { raw: string } | null;
   return row ? JSON.parse(row.raw) : null;
 }
+
+export function hasReply(chatId: string, messageId: string): boolean {
+  return db.query("SELECT 1 FROM messages WHERE chat_id = ? AND quoted_message_id = ? AND from_me = 1 LIMIT 1").get(chatId, messageId) !== null;
+}

@@ -10,7 +10,8 @@
     "dev": "bun --cwd ../.. run dev"
   },
   "dependencies": {
+    "@ditsebe/api": "workspace:*",
     "@ditsebe/whatsapp": "workspace:*",
-    "@ditsebe/api": "workspace:*"
+    "openai": "^7.15.0"
   }
 }

@@ -8,7 +8,9 @@
     "dev:api": "bun --watch packages/api/src/start.ts",
     "start:api": "bun run packages/api/src/start.ts",
     "typecheck": "tsc --noEmit",
-    "echo": "bun run packages/agent/scripts/webhook-echo.ts"
+    "echo": "bun run packages/agent/scripts/webhook-echo.ts",
+    "test": "bun test packages/agent/tests packages/api/tests",
+    "test:llm": "bun run packages/agent/scripts/llm-smoke.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

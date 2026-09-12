@@ -15,6 +15,7 @@
       "dependencies": {
         "@ditsebe/api": "workspace:*",
         "@ditsebe/whatsapp": "workspace:*",
+        "openai": "^7.15.0",
       },
     },
     "packages/api": {
@@ -258,6 +259,8 @@
     "music-metadata": ["music-metadata@11.15.0", "", { "dependencies": { "@borewit/text-codec": "^0.2.2", "@tokenizer/token": "^0.3.0", "content-type": "^2.1.0", "debug": "^4.4.3", "file-type": "^21.3.4", "media-typer": "^2.0.0", "strtok3": "^10.3.5", "token-types": "^6.1.2", "uint8array-extras": "^1.5.0", "win-guid": "^0.2.1" } }, "sha512-TN+kO1/oOc8UzDW5N3vSDncBcv9WyNnQQe/NFMcFWq6G1+zVeYUkGvkYpQ/S8wb8vKtUD7i78dIaY0cv+cmPRA=="],
 
     "on-exit-leak-free": ["on-exit-leak-free@2.1.2", "", {}, "sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA=="],
+
+    "openai": ["openai@7.15.0", "", { "peerDependencies": { "@aws-sdk/credential-provider-node": ">=3.972.0 <4", "@smithy/hash-node": ">=4.3.0 <5", "@smithy/signature-v4": ">=5.4.0 <6", "undici": ">=5 <9", "ws": "^8.21.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["@aws-sdk/credential-provider-node", "@smithy/hash-node", "@smithy/signature-v4", "undici", "ws", "zod"] }, "sha512-2DIwesnPSduw68MFx7nAdgvshrgvS8WOan5W8+tgUMlAy/tY+Q41g80Pa+w/v64rHA6rtn+dketa8QvMVxU96w=="],
 
     "p-limit": ["p-limit@2.3.0", "", { "dependencies": { "p-try": "^2.0.0" } }, "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w=="],
 
