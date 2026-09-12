@@ -4,8 +4,11 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
   type WASocket,
+  type WAMessage,
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode-terminal";
+import { toFile } from "qrcode";
+import { resolve } from "node:path";
 import { config } from "./config.ts";
 import { normalizeMessage } from "./normalize.ts";
 import type { CapturedMessage } from "./types.ts";
@@ -24,6 +27,21 @@ const logger = {
 
 /** Group subjects, so stored messages carry the group's name and not just its jid. */
 const groupNames = new Map<string, string>();
+let activeSocket: WASocket | undefined;
+
+export function isWhatsAppConnected(): boolean {
+  return activeSocket !== undefined;
+}
+
+export async function sendTextMessage(chatId: string, text: string, quoted?: WAMessage) {
+  const socket = activeSocket;
+  if (!socket) throw new Error("WhatsApp is not connected");
+  if (!chatId.endsWith("@g.us")) throw new Error("A group chat ID is required");
+  if (!text.trim()) throw new Error("Message text must not be empty");
+  const sent = await socket.sendMessage(chatId, { text }, quoted ? { quoted } : undefined);
+  if (!sent?.key.id) throw new Error("WhatsApp did not return a message ID");
+  return { id: sent.key.id, chatId };
+}
 
 async function groupName(sock: WASocket, jid: string): Promise<string | null> {
   const cached = groupNames.get(jid);
@@ -65,9 +83,17 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
     if (qr) {
       console.log("\nScan this QR with the WhatsApp account the agent should use:\n");
       qrcode.generate(qr, { small: true });
+      const qrPath = resolve(config.authDir, "pairing-qr.png");
+      try {
+        await toFile(qrPath, qr, { width: 600, margin: 4 });
+        console.log(`Pairing QR saved to ${qrPath} (refresh the image when the code changes)`);
+      } catch (err) {
+        console.error("Could not save pairing QR:", err);
+      }
     }
 
     if (connection === "open") {
+      activeSocket = sock;
       console.log(`\n✅ connected as ${sock.user?.name ?? sock.user?.id}`);
       try {
         const groups = await sock.groupFetchAllParticipating();
@@ -81,6 +107,7 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
     }
 
     if (connection === "close") {
+      if (activeSocket === sock) activeSocket = undefined;
       const statusCode = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output
         ?.statusCode;
       if (statusCode === DisconnectReason.loggedOut) {

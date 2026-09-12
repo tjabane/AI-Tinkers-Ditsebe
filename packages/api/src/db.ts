@@ -125,3 +125,9 @@ export function stats() {
     .get() as { messages: number; chats: number; senders: number };
   return row;
 }
+
+/** Retrieve the original payload to preserve WhatsApp reply context. */
+export function getRawMessage(chatId: string, id: string) {
+  const row = db.query("SELECT raw FROM messages WHERE chat_id = ? AND id = ?").get(chatId, id) as { raw: string } | null;
+  return row ? JSON.parse(row.raw) : null;
+}

@@ -156,3 +156,21 @@ API and full app separately, since both use the same port. LLM responses remain 
 - Media is recorded by type and caption; the binaries are not downloaded.
 - People in these groups have not consented to a bot logging them — for anything beyond
   the demo, tell the group the agent is there and what it keeps.
+
+## Send to Hackathon dev test
+
+With the full app running and WhatsApp connected, post text to the local API.
+The destination is fixed to Hackathon dev test (`120363431475712196@g.us`).
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/messages/send -ContentType 'application/json' -Body '{"text":"Hello from Ditsebe"}'
+```
+
+A successful response is HTTP 201 with the WhatsApp message ID and chat ID; it
+is not a recipient delivery receipt. Invalid input returns 400, disconnected or
+API-only mode returns 503, and send failures return 502. Check the group before
+retrying a failed request to avoid duplicate messages. Outgoing capture still
+depends on CAPTURE_OWN.
+
+To reply to a captured message, include `quotedMessageId` alongside `text` in the
+POST body. The message must exist in the target group; otherwise the API returns 404.
