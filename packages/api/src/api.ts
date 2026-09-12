@@ -12,6 +12,7 @@ function json(data: unknown, status = 200): Response {
 }
 
 export type SendMessageOptions = {
+  sendPrivate?: (sourceMessageId: string, text: string) => Promise<{ id: string; chatId: string }>;
   health?: () => { llm: { enabled: boolean; configured: boolean; active: boolean; model: string; last_request: { status: string; at: string; duration_ms?: number } | null } };
   continueImport?: (id: string) => Promise<unknown>;
   beginImport?: (groupName: string) => Promise<unknown>;
@@ -45,7 +46,7 @@ export function startApi(outbound?: SendMessageOptions) {
         try { return json(await outbound.beginImport(body.groupName), 202); }
         catch (err) { return json({ error: redact(err instanceof Error ? err.message : "Import failed") }, 409); }
       }
-      if (url.pathname === "/messages/send") {
+      if (url.pathname === "/messages/send" || url.pathname === "/messages/private") {
         if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
         let body: unknown;
         try { body = await req.json(); }
@@ -53,6 +54,13 @@ export function startApi(outbound?: SendMessageOptions) {
         if (!body || typeof body !== "object" || !("text" in body) ||
             typeof body.text !== "string" || !body.text.trim() || body.text.length > 10000) {
           return json({ error: "text must be a non-empty string of at most 10000 characters" }, 400);
+        }
+        if (url.pathname === "/messages/private") {
+          if (!("sourceMessageId" in body) || typeof body.sourceMessageId !== "string") return json({ error: "sourceMessageId is required" }, 400);
+          if (!outbound?.targetChatId || !getRawMessage(outbound.targetChatId, body.sourceMessageId)) return json({ error: "Original message not found in demo group" }, 404);
+          if (!outbound.sendPrivate || !outbound.isConnected()) return json({ error: "WhatsApp sending is unavailable" }, 503);
+          try { const sent = await outbound.sendPrivate(body.sourceMessageId, body.text); return json({ id: sent.id, recipient: privateAlias(sent.chatId) }, 201); }
+          catch (error) { log("ERROR", "api", "private_send_failed", errorFields(error)); return json({ error: "Private send failed; check before retrying" }, 502); }
         }
         const quotedMessageId = "quotedMessageId" in body ? body.quotedMessageId : undefined;
         if (quotedMessageId !== undefined && (typeof quotedMessageId !== "string" || !quotedMessageId.trim())) {

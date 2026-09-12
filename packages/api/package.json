@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./services": "./src/services.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "start": "bun --cwd ../.. run start:api",

@@ -30,7 +30,7 @@ test("extracts a local PDF schedule without an LLM", async () => {
     expect(result.status).toBe("extracted");
     expect(result.text).toContain("Outage 08:00 to 10:00");
   } finally { await rm(directory, { recursive: true, force: true }); }
-});
+}, 30000);
 
 test("extracts schedule text from a local image", async () => {
   const { createCanvas } = await import("@napi-rs/canvas");

@@ -30,6 +30,15 @@ const logger = {
 /** Group subjects, so stored messages carry the group's name and not just its jid. */
 const groupNames = new Map<string, string>();
 let activeSocket: WASocket | undefined;
+const privateRecipients = new Set<string>();
+const privateAliases = new Map<string, string>();
+export function trackPrivateRecipient(source: WAMessage) {
+  const key = source?.key;
+  if (!key?.participant) return;
+  privateRecipients.add(key.participant);
+  const alt = (key as { participantAlt?: string }).participantAlt;
+  if (alt) { privateRecipients.add(alt); privateAliases.set(alt, key.participant); }
+}
 
 export function isWhatsAppConnected(): boolean {
   return activeSocket !== undefined;
@@ -141,7 +150,8 @@ export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | 
       const name = chatId.endsWith("@g.us") ? await groupName(sock, chatId) : null;
       const msg = normalizeMessage(raw, name);
       if (!msg) continue;
-      if (config.groupsOnly && !msg.isGroup) continue;
+      if (!msg.isGroup) msg.chatId = privateAliases.get(msg.chatId) ?? msg.chatId;
+      if (config.groupsOnly && !msg.isGroup && !privateRecipients.has(msg.chatId)) continue;
       if (!config.captureOwn && msg.fromMe) continue;
 
       await onMessage(msg);
@@ -175,4 +185,19 @@ export async function downloadAttachment(raw: unknown) {
   const bytes = await downloadMediaMessage(message, "buffer", {}, { logger, reuploadRequest: activeSocket.updateMediaMessage });
   if (bytes.length > 25 * 1024 * 1024) throw new Error("Attachment exceeds 25 MB");
   return { bytes, kind, extension: kind === "pdf" ? ".pdf" : ".jpg" };
+}
+
+/** Send a private follow-up to the author of a captured group message. */
+export async function sendPrivateReply(source: WAMessage, text: string) {
+  const recipient = source?.key?.participant;
+  if (!source?.key?.remoteJid?.endsWith("@g.us") || source.key.fromMe ||
+      !recipient || !/^\d+(?::\d+)?@(lid|s\.whatsapp\.net)$/.test(recipient)) throw new Error("No valid original group sender");
+  if (!activeSocket) throw new Error("WhatsApp is not connected");
+  if (!text.trim()) throw new Error("Message text must not be empty");
+  const sent = await activeSocket.sendMessage(recipient, { text });
+  if (!sent?.key.id) throw new Error("WhatsApp did not return a message ID");
+  trackPrivateRecipient(source);
+  if (sent.key.remoteJid) { privateRecipients.add(sent.key.remoteJid); privateAliases.set(sent.key.remoteJid, recipient); }
+  log("INFO", "whatsapp", "private_followup_sent", { ref: logRef(recipient + ":" + sent.key.id) });
+  return { id: sent.key.id, chatId: recipient };
 }
