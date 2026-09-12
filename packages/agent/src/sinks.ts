@@ -1,6 +1,6 @@
 import { config } from "./config.ts";
-import { saveMessage } from "./db.ts";
-import type { CapturedMessage } from "./types.ts";
+import { saveMessage } from "@ditsebe/api";
+import type { CapturedMessage } from "@ditsebe/whatsapp";
 
 /** Anything that wants a copy of every captured message. */
 export type Sink = {

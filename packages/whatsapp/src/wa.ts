@@ -8,7 +8,7 @@ import makeWASocket, {
 import qrcode from "qrcode-terminal";
 import { config } from "./config.ts";
 import { normalizeMessage } from "./normalize.ts";
-import { fanOut } from "./sinks.ts";
+import type { CapturedMessage } from "./types.ts";
 
 // Baileys is chatty at info level; only surface real problems.
 const logger = {
@@ -40,7 +40,7 @@ async function groupName(sock: WASocket, jid: string): Promise<string | null> {
   return null;
 }
 
-export async function startWhatsApp(): Promise<WASocket> {
+export async function startWhatsApp(onMessage: (msg: CapturedMessage) => void | Promise<void>): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
   const { version } = await fetchLatestBaileysVersion();
 
@@ -91,7 +91,7 @@ export async function startWhatsApp(): Promise<WASocket> {
       }
       console.warn(`connection closed (${statusCode ?? "unknown"}) — reconnecting in 3s`);
       setTimeout(() => {
-        startWhatsApp().catch((err) => console.error("reconnect failed:", err));
+        startWhatsApp(onMessage).catch((err) => console.error("reconnect failed:", err));
       }, 3000);
     }
   });
@@ -116,7 +116,7 @@ export async function startWhatsApp(): Promise<WASocket> {
       if (config.groupsOnly && !msg.isGroup) continue;
       if (!config.captureOwn && msg.fromMe) continue;
 
-      await fanOut(msg);
+      await onMessage(msg);
     }
   });
 

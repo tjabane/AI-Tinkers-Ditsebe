@@ -1,22 +1,22 @@
 {
   "name": "hack-ditsebe",
-  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "typecheck": "bunx tsc --noEmit",
-    "echo": "bun run scripts/webhook-echo.ts"
+    "dev": "bun --watch packages/agent/src/index.ts",
+    "start": "bun run packages/agent/src/index.ts",
+    "dev:api": "bun --watch packages/api/src/start.ts",
+    "start:api": "bun run packages/api/src/start.ts",
+    "typecheck": "tsc --noEmit",
+    "echo": "bun run packages/agent/scripts/webhook-echo.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/qrcode-terminal": "^0.12.2",
     "typescript": "latest"
   },
-  "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc14",
-    "pino": "^10.3.1",
-    "qrcode-terminal": "^0.12.0"
-  }
+  "workspaces": [
+    "packages/whatsapp",
+    "packages/api",
+    "packages/agent"
+  ]
 }

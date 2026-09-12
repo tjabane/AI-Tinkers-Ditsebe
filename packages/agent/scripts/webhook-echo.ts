@@ -2,8 +2,8 @@
  * Throwaway webhook receiver, for proving the REST push works without standing
  * up a backend. Run it, then start the agent with WEBHOOK_URL pointing here.
  *
- *   bun run scripts/webhook-echo.ts
- *   WEBHOOK_URL=http://localhost:4000/hook bun run src/index.ts
+ *   bun run echo
+ *   WEBHOOK_URL=http://localhost:4000/hook bun run start
  */
 const port = Number(process.env.ECHO_PORT ?? 4000);
 

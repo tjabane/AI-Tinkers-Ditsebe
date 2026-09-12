@@ -1,10 +1,12 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { config } from "./config.ts";
-import type { CapturedMessage } from "./types.ts";
+import type { CapturedMessage } from "@ditsebe/whatsapp";
 
-mkdirSync(dirname(config.dbPath), { recursive: true });
+if (config.dbPath !== ":memory:") {
+  mkdirSync(dirname(resolve(config.dbPath)), { recursive: true });
+}
 
 export const db = new Database(config.dbPath, { create: true });
 db.exec("PRAGMA journal_mode = WAL;");
